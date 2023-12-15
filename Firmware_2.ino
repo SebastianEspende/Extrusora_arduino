@@ -56,15 +56,28 @@ boolean middle = false;
 // Define a stepper and the pins it will use
 AccelStepper stepper1(1, STEP, DIR); // (Type of driver: with 2 pins, STEP, DIR)
 
+struct Frame {
+  const char *nombre;
+  int *variable;
+  int minValue;
+  int maxValue;
+  int paso;
+};
+
+Frame frames[] = {
+  {"Temperatura", &set_temperature, 0, 250, 10},
+  {"Velocidad", &rotating_speed, 0, max_speed, 10},
+  // se pueden agregar mas frames de la siguiente manera: {"Nombre", variable a cambiar, valor minimo, valor maximo, cuanto aumenta o disminuye por cada click del encoder}
+};
 
 //MENU
+int numerodeframes = sizeof(frames) / sizeof(frames[0]);
+
 int frame = 0;
-int lastframe = -1;
-int estado;
+int lastframe = 0;
 int page = 0;
-int lastpage = 0;
-int itemmenu = 0;
-int numerodeframes = 5;
+int estado = 0;
+bool middle = false;
 
 //PID constants
 //////////////////////////////////////////////////////////
@@ -106,7 +119,6 @@ void setup() {
   }
 
 void loop() {
-
   
   if(activate_stepper){
     delay(10);
@@ -152,122 +164,66 @@ void loop() {
   
   middle = boton();
   if (page == 0) {
-  frame = cambiarframe();
+    frame = cambiarframe();
   }
-    if (frame != lastframe) {lastframe = frame;}
-    if (middle) {
-      displayitem();
-      } else {
-        page = 0;
-      }  
-      
-    stepper1.runSpeed();
-} // loop void fin
+  if (frame != lastframe) {
+    lastframe = frame;
+  }
+  if (middle) {
+    displayitem();
+  } else {
+    page = 0;
+  }
 
+  stepper1.runSpeed();
+} // loop void fin
 int cambiarframe() {
-    if(up && frame >= 0) {
-      up=false;
-      lastframe = frame;
-      frame++;
-      }
-      if (frame >= numerodeframes) {
-        lastframe = frame;
-        frame = numerodeframes;
-       }
-    if(down && frame <= numerodeframes) {
-      down = false;
-      lastframe = frame;
-      frame--;
-      }
-      if (frame < 0) {
-        lastframe = frame;
-        frame = 0;
-       }
-       mainmenu();
-    return frame;
+  if (up && frame >= 0) {
+    up = false;
+    lastframe = frame;
+    frame++;
   }
-  
+  if (frame >= numerodeframes) {
+    lastframe = frame;
+    frame = numerodeframes;
+  }
+  if (down && frame <= numerodeframes) {
+    down = false;
+    lastframe = frame;
+    frame--;
+  }
+  if (frame < 0) {
+    lastframe = frame;
+    frame = 0;
+  }
+  mainmenu();
+  return frame;
+}
+
 void displayitem() {
-  switch(frame) {
-    case 0:
-    if (value != last_set_temperature || estado == 0) {
-      lcd.clear();
-      page = 1;
-      estado = 1;
-      if (value > last_set_temperature) {
-      set_temperature += 10;
-      } else if (value < last_set_temperature) {
-        set_temperature -= 10;
-        }
-      if (set_temperature > 250) set_temperature = 250;
-      last_set_temperature = value;
-      lcd.print("Temperatura");
-      lcd.setCursor(0,1);
-      lcd.print("Valor: ");
-      lcd.print(set_temperature);
+  Frame currentFrame = frames[frame];
+
+  if (*(currentFrame.variable) != value || estado == 0) {
+    lcd.clear();
+    page = frame + 1;
+    estado = 1;
+    if (value > *(currentFrame.variable)) {
+      *(currentFrame.variable) += currentFrame.paso;
+    } else if (value < *(currentFrame.variable)) {
+      *(currentFrame.variable) -= currentFrame.paso;
     }
-      break;
-      
-    case 1:
-    if (value != last_set_velocidad || estado == 0) {
-      lcd.clear();
-      page = 2;
-      estado = 1;
-      if (value > last_set_velocidad) {
-      rotating_speed += 10;
-      } else if (value < last_set_velocidad) {
-        rotating_speed -= 10;
-        }
-      if (rotating_speed > max_speed) rotating_speed = max_speed;
-      last_set_velocidad = value;
-      lcd.print("Velocidad");
-      lcd.setCursor(0,1);
-      lcd.print("Valor: ");
-      lcd.print(rotating_speed);
+    if (*(currentFrame.variable) > currentFrame.maxValue) {
+      *(currentFrame.variable) = currentFrame.maxValue;
     }
-      break;
-   case 3:
-   if(set_temperature != 200 || rotating_speed != 500)  {
-   lcd.clear();
-   page = 3;
-   lcd.setCursor(0,0);
-   lcd.print("Los valores se han devuelto a su configuracion normal");
-   delay(2000);
-   set_temperature = 200;
-   rotating_speed = max_speed/10;
-   }
-   break;
-   case 4:
-      if (temperature_read != last_temperature_read || rotating_speed != last_set_velocidad) {
-        lcd.clear();
-        page = 4;
-        lcd.setCursor(0,0);
-        lcd.print("Temperatura: ");
-        last_temperature_read = temperature_read;
-        lcd.print(temperature_read);
-        lcd.setCursor(0,1);
-        lcd.print("Velocidad: ");
-        lcd.print(rotating_speed);
-        }
-        middle = false;
-   break;
-   case 2:
-      if(activate_stepper == false) {
-        lcd.clear();
-        lcd.print("motor prendido");
-        delay(1000);
-      activate_stepper = true;
-      } else if (activate_stepper == true) {
-        lcd.clear();
-        lcd.print("motor apagado");
-        delay(1000);
-      activate_stepper = false;
-        }
-        middle = false;
-   break;
+    value = *(currentFrame.variable);
+    lcd.print(currentFrame.nombre);
+    lcd.setCursor(0, 1);
+    lcd.print("Valor: ");
+    lcd.print(value);
   }
-  }
-  bool boton() {
+}
+
+bool boton() {
   ClickEncoder::Button b = encoder->getButton();
   if (b != ClickEncoder::Open) {
     switch (b) {
@@ -275,58 +231,31 @@ void displayitem() {
         middle = !middle;
         Serial.println("boton");
         break;
-      }
-    }
-    return middle;
-  }
-void mainmenu() {
-  if (frame != lastframe){
-  switch (frame) {
-    case 0:
-      lcd.clear();
-      lcd.print("Main Menu");
-      lcd.setCursor(0,1);
-      lcd.print("->Temperatura");
-      break;
-    case 1:
-      lcd.clear();
-      lcd.print("Temperatura");
-      lcd.setCursor(0,1);
-      lcd.print("->Velocidad");
-      break;
-    case 2:
-      lcd.clear();
-      lcd.print("Velocidad");
-      lcd.setCursor(0,1);
-      lcd.print("->Iniciar");
-      break;
-    case 3:
-      lcd.clear();
-      lcd.print("Iniciar");
-      lcd.setCursor(0,1);
-      lcd.print("->Reset");
-      break;
-    case 4:
-      lcd.clear();
-      lcd.print("Reset");
-      lcd.setCursor(0,1);
-      lcd.print("->Monitoreo");
-      break;
     }
   }
- }
+  return middle;
+}
 
+void mainmenu() {
+  if (frame != lastframe) {
+    lcd.clear();
+    lcd.print("Main Menu");
+    lcd.setCursor(0, 1);
+    lcd.print("->");
+    lcd.print(frames[frame].nombre);
+  }
+}
 void timerIsr() {
   encoder->service();
   value += encoder->getValue();
   if  (value > last) {
     up = true;
-    down=false;
+    down = false;
     }
     
   if  (value < last) {
     up = false;
-    down=true;
+    down = true;
     }
   if (value != last) {
     last = value;
